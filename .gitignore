@@ -1,0 +1,22 @@
+node_modules
+.env
+coverage
+coverage.json
+typechain
+typechain-types
+cache
+artifacts
+gas-report.txt
+
+# Hardhat files
+cache
+artifacts
+
+# IDE
+.vscode
+.idea
+
+# OS
+.DS_Store
+*.pdf
+CLAUDE.md

@@ -1,0 +1,834 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>CMPE 483 - Decentralized Lottery</title>
+    <script src="https://cdn.jsdelivr.net/npm/ethers@6.9.0/dist/ethers.umd.min.js"></script>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%);
+            min-height: 100vh;
+            color: #e0e0e0;
+            padding: 20px;
+        }
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+        }
+        header {
+            text-align: center;
+            margin-bottom: 30px;
+        }
+        h1 {
+            color: #00d4ff;
+            font-size: 2.5em;
+            margin-bottom: 10px;
+        }
+        .subtitle {
+            color: #888;
+            font-size: 1.1em;
+        }
+        .card {
+            background: rgba(255, 255, 255, 0.05);
+            border-radius: 15px;
+            padding: 25px;
+            margin-bottom: 20px;
+            border: 1px solid rgba(255, 255, 255, 0.1);
+        }
+        .card h2 {
+            color: #00d4ff;
+            margin-bottom: 20px;
+            font-size: 1.4em;
+        }
+        .grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(350px, 1fr));
+            gap: 20px;
+        }
+        .form-group {
+            margin-bottom: 15px;
+        }
+        label {
+            display: block;
+            margin-bottom: 8px;
+            color: #aaa;
+            font-size: 0.9em;
+        }
+        input, select {
+            width: 100%;
+            padding: 12px 15px;
+            border: 1px solid rgba(255, 255, 255, 0.2);
+            border-radius: 8px;
+            background: rgba(255, 255, 255, 0.05);
+            color: #fff;
+            font-size: 1em;
+        }
+        input:focus, select:focus {
+            outline: none;
+            border-color: #00d4ff;
+        }
+        button {
+            background: linear-gradient(135deg, #00d4ff 0%, #0099cc 100%);
+            color: #000;
+            padding: 12px 25px;
+            border: none;
+            border-radius: 8px;
+            font-size: 1em;
+            font-weight: 600;
+            cursor: pointer;
+            transition: transform 0.2s, opacity 0.2s;
+        }
+        button:hover {
+            transform: translateY(-2px);
+            opacity: 0.9;
+        }
+        button:disabled {
+            background: #555;
+            cursor: not-allowed;
+            transform: none;
+        }
+        .btn-secondary {
+            background: linear-gradient(135deg, #ff6b6b 0%, #ee5a5a 100%);
+        }
+        .btn-success {
+            background: linear-gradient(135deg, #2ecc71 0%, #27ae60 100%);
+        }
+        .status-bar {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            flex-wrap: wrap;
+            gap: 15px;
+            margin-bottom: 20px;
+        }
+        .status-item {
+            background: rgba(0, 212, 255, 0.1);
+            padding: 10px 20px;
+            border-radius: 8px;
+            border: 1px solid rgba(0, 212, 255, 0.3);
+        }
+        .status-label {
+            font-size: 0.8em;
+            color: #888;
+        }
+        .status-value {
+            font-size: 1.2em;
+            color: #00d4ff;
+            font-weight: 600;
+        }
+        .tickets-list {
+            max-height: 300px;
+            overflow-y: auto;
+        }
+        .ticket-item {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 12px 15px;
+            background: rgba(255, 255, 255, 0.03);
+            border-radius: 8px;
+            margin-bottom: 10px;
+        }
+        .ticket-info {
+            display: flex;
+            gap: 20px;
+        }
+        .ticket-id {
+            color: #00d4ff;
+            font-weight: 600;
+        }
+        .badge {
+            display: inline-block;
+            padding: 3px 10px;
+            border-radius: 12px;
+            font-size: 0.8em;
+            font-weight: 600;
+        }
+        .badge-revealed {
+            background: rgba(46, 204, 113, 0.2);
+            color: #2ecc71;
+        }
+        .badge-pending {
+            background: rgba(241, 196, 15, 0.2);
+            color: #f1c40f;
+        }
+        .badge-winner {
+            background: rgba(255, 107, 107, 0.2);
+            color: #ff6b6b;
+        }
+        .log {
+            background: #0a0a0f;
+            border-radius: 8px;
+            padding: 15px;
+            max-height: 200px;
+            overflow-y: auto;
+            font-family: 'Monaco', 'Menlo', monospace;
+            font-size: 0.85em;
+        }
+        .log-entry {
+            margin-bottom: 8px;
+            padding: 5px 0;
+            border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+        }
+        .log-success { color: #2ecc71; }
+        .log-error { color: #e74c3c; }
+        .log-info { color: #3498db; }
+        .connect-prompt {
+            text-align: center;
+            padding: 40px;
+        }
+        .connect-prompt p {
+            margin-bottom: 20px;
+            color: #888;
+        }
+        .hidden { display: none; }
+        .stage-indicator {
+            display: inline-block;
+            padding: 5px 15px;
+            border-radius: 20px;
+            font-weight: 600;
+            font-size: 0.9em;
+        }
+        .stage-purchase {
+            background: rgba(46, 204, 113, 0.2);
+            color: #2ecc71;
+        }
+        .stage-reveal {
+            background: rgba(241, 196, 15, 0.2);
+            color: #f1c40f;
+        }
+        .stage-ended {
+            background: rgba(231, 76, 60, 0.2);
+            color: #e74c3c;
+        }
+        .winners-table {
+            width: 100%;
+            border-collapse: collapse;
+        }
+        .winners-table th, .winners-table td {
+            padding: 12px;
+            text-align: left;
+            border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+        }
+        .winners-table th {
+            color: #888;
+            font-weight: 500;
+        }
+        .input-group {
+            display: flex;
+            gap: 10px;
+        }
+        .input-group input {
+            flex: 1;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>Decentralized Lottery</h1>
+            <p class="subtitle">CMPE 483 - Blockchain Technologies</p>
+        </header>
+
+        <!-- Connect Wallet Section -->
+        <div id="connectSection" class="card connect-prompt">
+            <p>Connect your MetaMask wallet to interact with the lottery</p>
+            <button onclick="connectWallet()">Connect Wallet</button>
+        </div>
+
+        <!-- Main Content (hidden until connected) -->
+        <div id="mainContent" class="hidden">
+            <!-- Status Bar -->
+            <div class="card">
+                <div class="status-bar">
+                    <div class="status-item">
+                        <div class="status-label">Connected Account</div>
+                        <div class="status-value" id="accountAddress">-</div>
+                        <button onclick="disconnect()" class="btn-secondary" style="margin-top: 10px; padding: 8px 15px; font-size: 0.8em;">Disconnect</button>
+                    </div>
+                    <div class="status-item">
+                        <div class="status-label">TL Balance (Contract)</div>
+                        <div class="status-value" id="tlBalance">-</div>
+                    </div>
+                    <div class="status-item">
+                        <div class="status-label">Current Lottery</div>
+                        <div class="status-value" id="currentLottery">-</div>
+                    </div>
+                    <div class="status-item">
+                        <div class="status-label">Stage</div>
+                        <div class="status-value" id="lotteryStage">-</div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="grid">
+                <!-- Deposit/Withdraw Section -->
+                <div class="card">
+                    <h2>TL Token Management</h2>
+                    <div class="form-group">
+                        <label>Wallet TL Balance</label>
+                        <div class="status-value" id="walletTlBalance">-</div>
+                    </div>
+                    <div class="form-group">
+                        <label>Amount</label>
+                        <input type="number" id="tlAmount" placeholder="Enter amount">
+                    </div>
+                    <div class="input-group">
+                        <button onclick="mintTL()">Mint TL</button>
+                        <button onclick="depositTL()">Deposit</button>
+                        <button onclick="withdrawTL()" class="btn-secondary">Withdraw</button>
+                    </div>
+                </div>
+
+                <!-- Buy Ticket Section -->
+                <div class="card">
+                    <h2>Buy Lottery Ticket</h2>
+                    <p style="color: #888; margin-bottom: 15px;">Price: 50 TL per ticket</p>
+                    <div class="form-group">
+                        <label>Random Number (will be hashed)</label>
+                        <input type="number" id="randomNumber" placeholder="Enter a random number">
+                    </div>
+                    <button onclick="buyTicket()">Buy Ticket</button>
+                    <div id="lastPurchase" style="margin-top: 15px; color: #2ecc71;"></div>
+                </div>
+
+                <!-- Reveal Section -->
+                <div class="card">
+                    <h2>Reveal Random Number</h2>
+                    <div class="form-group">
+                        <label>Ticket Number</label>
+                        <input type="number" id="revealTicketNo" placeholder="Ticket #">
+                    </div>
+                    <div class="form-group">
+                        <label>Your Random Number</label>
+                        <input type="number" id="revealRandom" placeholder="The number you committed">
+                    </div>
+                    <button onclick="revealRandom()" class="btn-success">Reveal</button>
+                </div>
+
+                <!-- Transfer Ticket Section -->
+                <div class="card">
+                    <h2>Transfer Revealed Ticket</h2>
+                    <div class="form-group">
+                        <label>Ticket Number</label>
+                        <input type="number" id="transferTicketNo" placeholder="Ticket #">
+                    </div>
+                    <div class="form-group">
+                        <label>Recipient Address</label>
+                        <input type="text" id="transferTo" placeholder="0x...">
+                    </div>
+                    <button onclick="transferTicket()">Transfer</button>
+                </div>
+            </div>
+
+            <!-- My Tickets Section -->
+            <div class="card">
+                <h2>My Tickets</h2>
+                <div class="form-group">
+                    <label>Lottery Number</label>
+                    <div class="input-group">
+                        <input type="number" id="viewLotteryNo" placeholder="Lottery #" value="1">
+                        <button onclick="loadMyTickets()">Load Tickets</button>
+                    </div>
+                </div>
+                <div id="myTickets" class="tickets-list"></div>
+            </div>
+
+            <!-- Winners Section -->
+            <div class="card">
+                <h2>Lottery Results & Prize Collection</h2>
+                <div class="form-group">
+                    <label>Lottery Number</label>
+                    <div class="input-group">
+                        <input type="number" id="resultsLotteryNo" placeholder="Lottery #" value="1">
+                        <button onclick="loadWinners()">View Winners</button>
+                    </div>
+                </div>
+                <div id="winnersSection" class="hidden">
+                    <table class="winners-table">
+                        <thead>
+                            <tr>
+                                <th>Prize #</th>
+                                <th>Winning Ticket</th>
+                                <th>Prize Amount (TL)</th>
+                                <th>Action</th>
+                            </tr>
+                        </thead>
+                        <tbody id="winnersTable"></tbody>
+                    </table>
+                </div>
+            </div>
+
+            <!-- Log Section -->
+            <div class="card">
+                <h2>Transaction Log</h2>
+                <div id="log" class="log"></div>
+            </div>
+        </div>
+
+        <!-- Contract Configuration -->
+        <div class="card">
+            <h2>Contract Addresses</h2>
+            <div class="form-group">
+                <label>TL Token Address</label>
+                <input type="text" id="tlTokenAddress" placeholder="0x...">
+            </div>
+            <div class="form-group">
+                <label>Lottery Ticket Address</label>
+                <input type="text" id="lotteryTicketAddress" placeholder="0x...">
+            </div>
+            <div class="form-group">
+                <label>Lottery Address</label>
+                <input type="text" id="lotteryAddress" placeholder="0x...">
+            </div>
+            <button onclick="saveAddresses()">Save & Connect</button>
+        </div>
+    </div>
+
+    <script>
+        // Contract ABIs (minimal required functions)
+        const TL_TOKEN_ABI = [
+            "function balanceOf(address owner) view returns (uint256)",
+            "function approve(address spender, uint256 amount) returns (bool)",
+            "function mint(uint256 amount)",
+            "function allowance(address owner, address spender) view returns (uint256)"
+        ];
+
+        const LOTTERY_TICKET_ABI = [
+            "function ownerOf(uint256 tokenId) view returns (address)",
+            "function balanceOf(address owner) view returns (uint256)"
+        ];
+
+        const LOTTERY_ABI = [
+            "function depositTL(uint256 amount)",
+            "function withdrawTL(uint256 amount)",
+            "function buyTicket(bytes32 hash_rnd_number) returns (uint256)",
+            "function revealRndNumber(uint256 ticketno, uint256 rnd_number) returns (bool)",
+            "function transferRevealedTicketTo(uint256 ticketno, address addr) returns (bool)",
+            "function getLastBoughtTicketNo(uint256 lottery_no) view returns (uint256, uint8)",
+            "function getIthOwnedTicketNo(uint256 i, uint256 lottery_no) view returns (uint256, uint8)",
+            "function getWinningTickets(uint256 lottery_no) view returns (uint256[])",
+            "function collectTicketPrize(uint256 ticket_no, uint256 prizeno)",
+            "function getIthWinningTicket(uint256 i, uint256 lottery_no) view returns (uint256, uint256)",
+            "function getLotteryNo(uint256 unixtimeinweek) view returns (uint256)",
+            "function getTotalLotteryMoneyCollected(uint256 lottery_no) view returns (uint256)",
+            "function balances(address) view returns (uint256)",
+            "function tickets(uint256) view returns (uint256 lotteryNo, bytes32 hashRndNumber, uint256 rndNumber, bool revealed, address originalBuyer)",
+            "function getCurrentLotteryNo() view returns (uint256)",
+            "function isInPurchaseStage(uint256 lotteryNo) view returns (bool)",
+            "function isInRevealStage(uint256 lotteryNo) view returns (bool)",
+            "function isLotteryEnded(uint256 lotteryNo) view returns (bool)",
+            "function getUserTicketCount(address user, uint256 lotteryNo) view returns (uint256)",
+            "function TICKET_PRICE() view returns (uint256)",
+            "event TicketPurchased(address indexed buyer, uint256 indexed lotteryNo, uint256 ticketNo, bytes32 hashRndNumber)"
+        ];
+
+        let provider, signer, account;
+        let tlToken, lotteryTicket, lottery;
+
+        // Initialize
+        async function init() {
+            if (typeof window.ethereum !== 'undefined') {
+                provider = new ethers.BrowserProvider(window.ethereum);
+
+                // Load saved addresses
+                const savedTl = localStorage.getItem('tlTokenAddress');
+                const savedTicket = localStorage.getItem('lotteryTicketAddress');
+                const savedLottery = localStorage.getItem('lotteryAddress');
+
+                if (savedTl) document.getElementById('tlTokenAddress').value = savedTl;
+                if (savedTicket) document.getElementById('lotteryTicketAddress').value = savedTicket;
+                if (savedLottery) document.getElementById('lotteryAddress').value = savedLottery;
+
+                // Check if already connected
+                const accounts = await provider.listAccounts();
+                if (accounts.length > 0) {
+                    await connectWallet();
+                }
+            } else {
+                log('MetaMask is not installed!', 'error');
+            }
+        }
+
+        async function connectWallet() {
+            try {
+                await provider.send("eth_requestAccounts", []);
+                signer = await provider.getSigner();
+                account = await signer.getAddress();
+
+                document.getElementById('accountAddress').textContent =
+                    account.slice(0, 6) + '...' + account.slice(-4);
+                document.getElementById('connectSection').classList.add('hidden');
+                document.getElementById('mainContent').classList.remove('hidden');
+
+                await initContracts();
+                await updateBalances();
+                await updateLotteryInfo();
+
+                log('Wallet connected: ' + account, 'success');
+            } catch (error) {
+                log('Connection failed: ' + error.message, 'error');
+            }
+        }
+
+        function saveAddresses() {
+            const tlAddr = document.getElementById('tlTokenAddress').value;
+            const ticketAddr = document.getElementById('lotteryTicketAddress').value;
+            const lotteryAddr = document.getElementById('lotteryAddress').value;
+
+            localStorage.setItem('tlTokenAddress', tlAddr);
+            localStorage.setItem('lotteryTicketAddress', ticketAddr);
+            localStorage.setItem('lotteryAddress', lotteryAddr);
+
+            initContracts();
+            updateBalances();
+            updateLotteryInfo();
+
+            log('Contract addresses saved', 'success');
+        }
+
+        async function initContracts() {
+            const tlAddr = document.getElementById('tlTokenAddress').value;
+            const ticketAddr = document.getElementById('lotteryTicketAddress').value;
+            const lotteryAddr = document.getElementById('lotteryAddress').value;
+
+            if (tlAddr) tlToken = new ethers.Contract(tlAddr, TL_TOKEN_ABI, signer);
+            if (ticketAddr) lotteryTicket = new ethers.Contract(ticketAddr, LOTTERY_TICKET_ABI, signer);
+            if (lotteryAddr) lottery = new ethers.Contract(lotteryAddr, LOTTERY_ABI, signer);
+        }
+
+        async function updateBalances() {
+            if (!lottery || !tlToken || !account) return;
+
+            try {
+                const balance = await lottery.balances(account);
+                document.getElementById('tlBalance').textContent = balance.toString() + ' TL';
+
+                const walletBalance = await tlToken.balanceOf(account);
+                document.getElementById('walletTlBalance').textContent = walletBalance.toString() + ' TL';
+            } catch (error) {
+                console.error('Error updating balances:', error);
+            }
+        }
+
+        async function updateLotteryInfo() {
+            if (!lottery) return;
+
+            try {
+                const currentLottery = await lottery.getCurrentLotteryNo();
+                document.getElementById('currentLottery').textContent = '#' + currentLottery.toString();
+
+                const isPurchase = await lottery.isInPurchaseStage(currentLottery);
+                const isReveal = await lottery.isInRevealStage(currentLottery);
+
+                let stageText, stageClass;
+                if (isPurchase) {
+                    stageText = 'Purchase';
+                    stageClass = 'stage-purchase';
+                } else if (isReveal) {
+                    stageText = 'Reveal';
+                    stageClass = 'stage-reveal';
+                } else {
+                    stageText = 'Ended';
+                    stageClass = 'stage-ended';
+                }
+
+                document.getElementById('lotteryStage').innerHTML =
+                    `<span class="stage-indicator ${stageClass}">${stageText}</span>`;
+            } catch (error) {
+                console.error('Error updating lottery info:', error);
+            }
+        }
+
+        async function mintTL() {
+            const amount = document.getElementById('tlAmount').value;
+            if (!amount) {
+                log('Please enter an amount', 'error');
+                return;
+            }
+
+            try {
+                log('Minting ' + amount + ' TL...', 'info');
+                const tx = await tlToken.mint(amount);
+                await tx.wait();
+                log('Minted ' + amount + ' TL successfully!', 'success');
+                await updateBalances();
+            } catch (error) {
+                log('Mint failed: ' + error.message, 'error');
+            }
+        }
+
+        async function depositTL() {
+            const amount = document.getElementById('tlAmount').value;
+            if (!amount) {
+                log('Please enter an amount', 'error');
+                return;
+            }
+
+            try {
+                // Check allowance and approve if needed
+                const allowance = await tlToken.allowance(account, await lottery.getAddress());
+                if (allowance < BigInt(amount)) {
+                    log('Approving TL transfer...', 'info');
+                    const approveTx = await tlToken.approve(await lottery.getAddress(), amount);
+                    await approveTx.wait();
+                }
+
+                log('Depositing ' + amount + ' TL...', 'info');
+                const tx = await lottery.depositTL(amount);
+                await tx.wait();
+                log('Deposited ' + amount + ' TL successfully!', 'success');
+                await updateBalances();
+            } catch (error) {
+                log('Deposit failed: ' + error.message, 'error');
+            }
+        }
+
+        async function withdrawTL() {
+            const amount = document.getElementById('tlAmount').value;
+            if (!amount) {
+                log('Please enter an amount', 'error');
+                return;
+            }
+
+            try {
+                log('Withdrawing ' + amount + ' TL...', 'info');
+                const tx = await lottery.withdrawTL(amount);
+                await tx.wait();
+                log('Withdrew ' + amount + ' TL successfully!', 'success');
+                await updateBalances();
+            } catch (error) {
+                log('Withdraw failed: ' + error.message, 'error');
+            }
+        }
+
+        async function buyTicket() {
+            const rndNumber = document.getElementById('randomNumber').value;
+            if (!rndNumber) {
+                log('Please enter a random number', 'error');
+                return;
+            }
+
+            try {
+                // Hash the random number
+                const hash = ethers.keccak256(ethers.AbiCoder.defaultAbiCoder().encode(['uint256'], [rndNumber]));
+
+                log('Buying ticket with hash: ' + hash.slice(0, 10) + '...', 'info');
+                const tx = await lottery.buyTicket(hash);
+                const receipt = await tx.wait();
+
+                // Find the ticket number from events
+                const event = receipt.logs.find(log => {
+                    try {
+                        const parsed = lottery.interface.parseLog(log);
+                        return parsed && parsed.name === 'TicketPurchased';
+                    } catch { return false; }
+                });
+
+                if (event) {
+                    const parsed = lottery.interface.parseLog(event);
+                    const ticketNo = parsed.args[2];
+                    log('Ticket #' + ticketNo + ' purchased! Remember your random number: ' + rndNumber, 'success');
+                    document.getElementById('lastPurchase').textContent =
+                        'Last ticket: #' + ticketNo + ' | Random: ' + rndNumber;
+                } else {
+                    log('Ticket purchased successfully!', 'success');
+                }
+
+                await updateBalances();
+            } catch (error) {
+                log('Buy ticket failed: ' + error.message, 'error');
+            }
+        }
+
+        async function revealRandom() {
+            const ticketNo = document.getElementById('revealTicketNo').value;
+            const rndNumber = document.getElementById('revealRandom').value;
+
+            if (!ticketNo || !rndNumber) {
+                log('Please enter ticket number and random number', 'error');
+                return;
+            }
+
+            try {
+                log('Revealing random number for ticket #' + ticketNo + '...', 'info');
+                const tx = await lottery.revealRndNumber(ticketNo, rndNumber);
+                await tx.wait();
+                log('Random number revealed successfully!', 'success');
+            } catch (error) {
+                log('Reveal failed: ' + error.message, 'error');
+            }
+        }
+
+        async function transferTicket() {
+            const ticketNo = document.getElementById('transferTicketNo').value;
+            const to = document.getElementById('transferTo').value;
+
+            if (!ticketNo || !to) {
+                log('Please enter ticket number and recipient address', 'error');
+                return;
+            }
+
+            try {
+                log('Transferring ticket #' + ticketNo + '...', 'info');
+                const tx = await lottery.transferRevealedTicketTo(ticketNo, to);
+                await tx.wait();
+                log('Ticket transferred successfully!', 'success');
+            } catch (error) {
+                log('Transfer failed: ' + error.message, 'error');
+            }
+        }
+
+        async function loadMyTickets() {
+            const lotteryNo = document.getElementById('viewLotteryNo').value;
+            if (!lotteryNo) {
+                log('Please enter a lottery number', 'error');
+                return;
+            }
+
+            const container = document.getElementById('myTickets');
+            container.innerHTML = '<p style="color: #888;">Loading...</p>';
+
+            try {
+                const count = await lottery.getUserTicketCount(account, lotteryNo);
+
+                if (count == 0) {
+                    container.innerHTML = '<p style="color: #888;">No tickets found for this lottery.</p>';
+                    return;
+                }
+
+                let html = '';
+                for (let i = 0; i < count; i++) {
+                    const [ticketNo, status] = await lottery.getIthOwnedTicketNo(i, lotteryNo);
+                    const isRevealed = status === 1;
+
+                    html += `
+                        <div class="ticket-item">
+                            <div class="ticket-info">
+                                <span class="ticket-id">Ticket #${ticketNo}</span>
+                                <span class="badge ${isRevealed ? 'badge-revealed' : 'badge-pending'}">
+                                    ${isRevealed ? 'Revealed' : 'Not Revealed'}
+                                </span>
+                            </div>
+                        </div>
+                    `;
+                }
+
+                container.innerHTML = html;
+            } catch (error) {
+                container.innerHTML = '<p style="color: #e74c3c;">Error loading tickets: ' + error.message + '</p>';
+            }
+        }
+
+        async function loadWinners() {
+            const lotteryNo = document.getElementById('resultsLotteryNo').value;
+            if (!lotteryNo) {
+                log('Please enter a lottery number', 'error');
+                return;
+            }
+
+            const container = document.getElementById('winnersTable');
+            const section = document.getElementById('winnersSection');
+            container.innerHTML = '<tr><td colspan="4" style="text-align: center; color: #888;">Loading...</td></tr>';
+            section.classList.remove('hidden');
+
+            try {
+                const isEnded = await lottery.isLotteryEnded(lotteryNo);
+                if (!isEnded) {
+                    container.innerHTML = '<tr><td colspan="4" style="text-align: center; color: #f1c40f;">Lottery has not ended yet.</td></tr>';
+                    return;
+                }
+
+                const winners = await lottery.getWinningTickets(lotteryNo);
+
+                if (winners.length === 0) {
+                    container.innerHTML = '<tr><td colspan="4" style="text-align: center; color: #888;">No winners (no revealed tickets).</td></tr>';
+                    return;
+                }
+
+                let html = '';
+                for (let i = 0; i < winners.length; i++) {
+                    const [ticketNo, amount] = await lottery.getIthWinningTicket(i + 1, lotteryNo);
+
+                    // Check if current user owns this ticket
+                    let ownerText = '-';
+                    let canCollect = false;
+                    try {
+                        const owner = await lotteryTicket.ownerOf(ticketNo);
+                        ownerText = owner.toLowerCase() === account.toLowerCase() ? 'You!' : owner.slice(0, 6) + '...';
+                        canCollect = owner.toLowerCase() === account.toLowerCase();
+                    } catch {}
+
+                    html += `
+                        <tr>
+                            <td>#${i + 1}</td>
+                            <td>${ticketNo} ${ownerText === 'You!' ? '<span class="badge badge-winner">Your ticket!</span>' : ''}</td>
+                            <td>${amount} TL</td>
+                            <td>
+                                ${canCollect ? `<button onclick="collectPrize(${ticketNo}, ${i + 1})" class="btn-success">Collect</button>` : '-'}
+                            </td>
+                        </tr>
+                    `;
+                }
+
+                container.innerHTML = html;
+            } catch (error) {
+                container.innerHTML = '<tr><td colspan="4" style="text-align: center; color: #e74c3c;">Error: ' + error.message + '</td></tr>';
+            }
+        }
+
+        async function collectPrize(ticketNo, prizeNo) {
+            try {
+                log('Collecting prize #' + prizeNo + ' for ticket #' + ticketNo + '...', 'info');
+                const tx = await lottery.collectTicketPrize(ticketNo, prizeNo);
+                await tx.wait();
+                log('Prize collected successfully!', 'success');
+                await updateBalances();
+                loadWinners();
+            } catch (error) {
+                log('Prize collection failed: ' + error.message, 'error');
+            }
+        }
+
+        function disconnect() {
+            localStorage.clear();
+            account = null;
+            signer = null;
+            document.getElementById('connectSection').classList.remove('hidden');
+            document.getElementById('mainContent').classList.add('hidden');
+            log('Disconnected. Please reconnect with the correct account.', 'info');
+        }
+
+        function log(message, type = 'info') {
+            const logDiv = document.getElementById('log');
+            const entry = document.createElement('div');
+            entry.className = 'log-entry log-' + type;
+            entry.textContent = new Date().toLocaleTimeString() + ' - ' + message;
+            logDiv.insertBefore(entry, logDiv.firstChild);
+        }
+
+        // Listen for account changes
+        if (window.ethereum) {
+            window.ethereum.on('accountsChanged', (accounts) => {
+                if (accounts.length > 0) {
+                    window.location.reload();
+                }
+            });
+
+            window.ethereum.on('chainChanged', () => {
+                window.location.reload();
+            });
+        }
+
+        // Initialize on page load
+        window.onload = init;
+    </script>
+</body>
+</html>
