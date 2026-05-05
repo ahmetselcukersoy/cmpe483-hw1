@@ -14,9 +14,9 @@ A fully autonomous decentralized lottery implementation on Ethereum using Solidi
 
 | Contract | Address |
 |----------|---------|
-| TLToken | `0x06DAA96375d9aeAaF6570E9c32b2A0b645a7DB58` |
-| LotteryTicket | `0x6c60EDc4fB8C0C64254B908d025B1385e1687c5c` |
-| Lottery | `0x6B823d6640dB6Cc07a89C22aD815D8374a0915FC` |
+| TLToken | `0xc06ADF08a3ec687bDDb9711CAcB5Cd40a843712c` |
+| LotteryTicket | `0x013Ca9eBB17286AfC1e963aCD5Bb4Cc087915e50` |
+| Lottery | `0x044Ef53E86366a9159DB3ce7982171912c7D4C66` |
 
 ## Project Structure
 

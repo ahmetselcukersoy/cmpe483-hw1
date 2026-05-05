@@ -14,6 +14,14 @@ npx hardhat --version   # 3.4.4
 npm run test            # 45 passing
 ```
 
+## 2a. Sepolia proof (real-network requirement)
+Open these 3 Etherscan tabs to show the contracts are live on Sepolia:
+- TLToken: https://sepolia.etherscan.io/address/0xc06ADF08a3ec687bDDb9711CAcB5Cd40a843712c
+- LotteryTicket: https://sepolia.etherscan.io/address/0x013Ca9eBB17286AfC1e963aCD5Bb4Cc087915e50
+- Lottery: https://sepolia.etherscan.io/address/0x044Ef53E86366a9159DB3ce7982171912c7D4C66
+
+Say: *"Spec asks for deployment to a real network — these three contracts are live on Sepolia. The interactive demo runs against a local Hardhat node so we can fast-forward the 7-day lottery cycle."*
+
 ## 3. Show contracts
 - `contracts/Lottery.sol` — interface functions, `_getPrizeCount`, `_calculatePrize`, `revealRndNumber` salted hash.
 - `contracts/LotteryTicket.sol::_update` — direct transfer guard.

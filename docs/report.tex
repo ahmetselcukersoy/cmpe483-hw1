@@ -56,7 +56,7 @@ frame=single
 \vspace{0.3cm}
 \large Project Report
 }
-\author{Ahmet Selçuk Ersoy (2020400087) \\ Eren Akçin (\textbf{TODO: student no})}
+\author{Ahmet Selçuk Ersoy (2020400087) \\ Eren Akçin (2021400060)}
 \date{\today}
 
 \begin{document}
@@ -375,10 +375,9 @@ All 45 tests pass successfully:
 %------------------------------------------------------------------------------
 \section{Gas Usage Analysis}
 
-Gas optimization is critical for Ethereum applications. The figures below
-are taken from the latest \texttt{npm run test:gas} run
-(\texttt{gas-report.txt} in the project root) and reflect the contracts
-in their final, audited state.
+Gas optimization is critical for Ethereum applications. The figures
+below are taken from \texttt{gas-report.txt} in the project root and
+reflect the contracts in their final, audited state.
 
 \begin{table}[H]
     \centering
@@ -444,9 +443,9 @@ The contracts have been deployed to the Sepolia testnet:
         \toprule
         \textbf{Contract} & \textbf{Address} \\
         \midrule
-        TLToken & \texttt{0x06DAA96375d9aeAaF6570E9c32b2A0b645a7DB58} \\
-        LotteryTicket & \texttt{0x6c60EDc4fB8C0C64254B908d025B1385e1687c5c} \\
-        Lottery & \texttt{0x6B823d6640dB6Cc07a89C22aD815D8374a0915FC} \\
+        TLToken & \texttt{0xc06ADF08a3ec687bDDb9711CAcB5Cd40a843712c} \\
+        LotteryTicket & \texttt{0x013Ca9eBB17286AfC1e963aCD5Bb4Cc087915e50} \\
+        Lottery & \texttt{0x044Ef53E86366a9159DB3ce7982171912c7D4C66} \\
         \bottomrule
     \end{tabular}
     \caption{Deployed Contract Addresses on Sepolia}
@@ -505,14 +504,14 @@ A web-based frontend application was developed to interact with the smart contra
 \subsection{Usage Flow}
 
 \begin{enumerate}
-    \item Connect MetaMask wallet to Sepolia network
-    \item Enter deployed contract addresses
+    \item Connect MetaMask wallet to the target network (local Hardhat node at \texttt{http://127.0.0.1:8545} chainId \texttt{31337}, or Sepolia)
+    \item Enter the three deployed contract addresses and click \textit{Save \& Connect}
     \item Mint TL tokens for testing
-    \item Deposit TL tokens to lottery contract
-    \item Buy ticket with a random number
-    \item Wait for reveal stage
-    \item Reveal the random number
-    \item After lottery ends, collect any won prizes
+    \item Deposit TL tokens to the Lottery contract
+    \item Buy a ticket with a random number (the frontend computes \texttt{keccak256(rnd, msg.sender)})
+    \item Wait for the reveal stage
+    \item Reveal the random number for each ticket
+    \item After the lottery ends, collect any won prizes and withdraw the resulting TL balance
 \end{enumerate}
 
 %------------------------------------------------------------------------------
