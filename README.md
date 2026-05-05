@@ -57,12 +57,14 @@ cp .env.example .env
 ## Running Tests
 
 ```bash
-# Run all 42 tests
+# Run all 45 tests on Hardhat 3
 npm run test
-
-# Run tests with gas report
-npm run test:gas
 ```
+
+> **Gas report:** `hardhat-gas-reporter` 2.3.0 is still pinned to Hardhat 2 as a
+> peer dependency, so the gas table in `gas-report.txt` was captured against the
+> same contracts under Hardhat 2.28.6 (`main` branch, commit immediately before
+> the Hardhat 3 migration). Bytecode is identical, so the figures still apply.
 
 ### Test Coverage
 
@@ -178,11 +180,11 @@ when called via `eth_call`.
 ## Technologies Used
 
 - Solidity 0.8.26
-- Hardhat 2.28.6 (latest stable Hardhat 2; the spec asks for Hardhat 3 — see `docs/report.tex` "Tooling Note" for the rationale)
+- **Hardhat 3.x** (ESM-first; `@nomicfoundation/hardhat-toolbox-mocha-ethers`)
 - OpenZeppelin Contracts 5.x
 - ethers.js 6.x
-- TypeScript
-- Chai (testing)
+- TypeScript (NodeNext)
+- Mocha 11 + Chai 5
 
 ## License
 

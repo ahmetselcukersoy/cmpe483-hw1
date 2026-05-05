@@ -89,11 +89,12 @@ The main objectives of this project are:
 
 \begin{itemize}
     \item \textbf{Solidity 0.8.26} - Smart contract programming language
-    \item \textbf{Hardhat} - Ethereum development environment
-    \item \textbf{OpenZeppelin Contracts 5.0} - Secure smart contract library
-    \item \textbf{TypeScript} - Testing and deployment scripts
+    \item \textbf{Hardhat 3.x} - Ethereum development environment (ESM-first)
+    \item \textbf{@nomicfoundation/hardhat-toolbox-mocha-ethers 3.x} - bundled Hardhat 3 plugin set
+    \item \textbf{OpenZeppelin Contracts 5.x} - Secure smart contract library
+    \item \textbf{TypeScript (NodeNext)} - Testing and deployment scripts
     \item \textbf{ethers.js 6.x} - Ethereum JavaScript library
-    \item \textbf{Chai} - Assertion library for testing
+    \item \textbf{Chai 5.x + Mocha 11.x} - Assertion / test runner stack
 \end{itemize}
 
 %------------------------------------------------------------------------------
@@ -545,18 +546,26 @@ The commit-reveal scheme prevents:
 \end{itemize}
 
 %------------------------------------------------------------------------------
-\section{Tooling Note: Hardhat Version}
+\section{Tooling Note: Hardhat 3}
 
-The assignment specifies Hardhat~3 as the development platform. We
-developed and tested against Hardhat~2.28.6 (the latest stable Hardhat~2
-release at the time of writing) because the surrounding plugin ecosystem
-required by the spec --- in particular
-\texttt{@nomicfoundation/hardhat-toolbox}, \texttt{hardhat-gas-reporter},
-and the TypeChain integration --- did not yet have stable Hardhat~3
-releases when this project was written. All other requirements
-(ethers.js, Chai assertions, dynamic-address tests, deployment scripts)
-are met. Migrating to Hardhat~3 once its plugin matrix stabilises is
-straightforward as the contracts themselves are tooling-agnostic.
+The project targets Hardhat~3 as required by the spec. The notable
+configuration changes that this entails are:
+\begin{itemize}
+    \item \texttt{package.json} has \texttt{"type": "module"} (Hardhat 3 is ESM-first).
+    \item \texttt{tsconfig.json} uses \texttt{module: "NodeNext"} and \texttt{moduleResolution: "NodeNext"}.
+    \item \texttt{hardhat.config.ts} uses the new \texttt{plugins: [...]} array and the \texttt{solidity.profiles.default} structure introduced in Hardhat~3.
+    \item Tests obtain \texttt{ethers} and \texttt{networkHelpers} from \texttt{await network.create()}; there is no global \texttt{ethers} object anymore.
+    \item \texttt{loadFixture} and \texttt{time.increase} are accessed through \texttt{networkHelpers}.
+    \item The bundled toolbox is \texttt{@nomicfoundation/hardhat-toolbox-mocha-ethers}.
+\end{itemize}
+
+\textbf{Gas reporting.} \texttt{hardhat-gas-reporter} (latest published
+version, 2.3.0) still declares \texttt{hardhat~\^{}2.16.0} as a peer
+dependency and is therefore not yet compatible with Hardhat~3. The gas
+figures in Table~\ref{tab:gas} were captured against the same contracts
+under Hardhat~2.28.6 on the \texttt{main} branch (commit immediately
+preceding the Hardhat~3 migration); the smart contract bytecode is
+identical, so the numbers are still representative of the deployed code.
 
 %------------------------------------------------------------------------------
 \section{Task Achievement Table}
@@ -571,7 +580,7 @@ straightforward as the contracts themselves are tooling-agnostic.
         Documentation with at least 6 pages                          & \checkmark &  &  \\
         Average gas usages for the interface functions               & \checkmark &  &  \\
         Comments in code                                             & \checkmark &  &  \\
-        Hardhat development platform used                            &  & \checkmark (HH 2.28.6) &  \\
+        Hardhat~3 development platform used                          & \checkmark &  &  \\
         Solidity smart contract code submitted                       & \checkmark &  &  \\
         Contract deployment script written                           & \checkmark &  &  \\
         Chai assertion tests written                                 & \checkmark &  &  \\
