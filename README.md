@@ -46,8 +46,10 @@ hw1/
 git clone <repository-url>
 cd hw1
 
-# Install dependencies
-npm install
+# Hardhat 3's plugins are pulled in as peer dependencies of
+# @nomicfoundation/hardhat-toolbox-mocha-ethers, so npm needs the
+# --legacy-peer-deps flag to resolve the tree.
+npm install --legacy-peer-deps
 
 # Copy environment file and configure
 cp .env.example .env
