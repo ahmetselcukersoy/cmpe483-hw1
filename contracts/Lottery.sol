@@ -279,9 +279,11 @@ contract Lottery {
         // Can't reveal twice
         if (ticket.revealed) revert AlreadyRevealed();
 
-        // Verify the revealed number matches the committed hash
-        // This is the "reveal" part of commit-reveal scheme
-        bytes32 computedHash = keccak256(abi.encodePacked(rnd_number));
+        // Verify the revealed number matches the committed hash.
+        // Salting with the original buyer's address prevents two users from
+        // sharing a hash if they pick the same random number, and follows the
+        // pattern recommended in https://ethereum.stackexchange.com/q/191 .
+        bytes32 computedHash = keccak256(abi.encodePacked(rnd_number, ticket.originalBuyer));
         if (computedHash != ticket.hashRndNumber) revert HashMismatch();
 
         // Store the revealed random number
@@ -619,22 +621,26 @@ contract Lottery {
     /**
      * @dev Calculate number of prizes based on total money
      * @param totalMoney Total money collected (M)
-     * @return Number of prizes
+     * @return Number of prizes per the spec: ceil(log2(M)) + 1
      *
-     * Formula: ceil(log2(M)) + 1
-     * Implemented by counting bits needed to represent M
+     * ceil(log2(M)) is computed by counting the bits of (M-1):
+     *   - M = 1   -> M-1 = 0 -> ceil(log2(1)) = 0  -> prize count = 1
+     *   - M = 2   -> M-1 = 1 -> ceil(log2(2)) = 1  -> prize count = 2
+     *   - M = 4   -> M-1 = 3 -> ceil(log2(4)) = 2  -> prize count = 3
+     *   - M = 5   -> M-1 = 4 -> ceil(log2(5)) = 3  -> prize count = 4
      */
     function _getPrizeCount(uint256 totalMoney) internal pure returns (uint256) {
         if (totalMoney == 0) return 0;
 
-        uint256 count = 0;
-        uint256 temp = totalMoney;
-        // Count bits (equivalent to ceil(log2(M)) + 1)
+        // ceil(log2(totalMoney)) == bit length of (totalMoney - 1)
+        uint256 ceilLog2 = 0;
+        uint256 temp = totalMoney - 1;
         while (temp > 0) {
             temp >>= 1;
-            count++;
+            ceilLog2++;
         }
-        return count;
+        // Spec: i = 1, ..., ceil(log2(M)) + 1
+        return ceilLog2 + 1;
     }
 
     /**

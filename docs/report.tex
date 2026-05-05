@@ -6,6 +6,7 @@
 \usepackage{listings}
 \usepackage{xcolor}
 \usepackage{amsmath}
+\usepackage{amssymb}
 \usepackage{booktabs}
 \usepackage{geometry}
 \usepackage{fancyhdr}
@@ -55,8 +56,7 @@ frame=single
 \vspace{0.3cm}
 \large Project Report
 }
-\author{Ahmet Selçuk Ersoy \\ 2020400087}
-\author{Eren Akçin \\ Student ID}
+\author{Ahmet Selçuk Ersoy (2020400087) \\ Eren Akçin (\textbf{TODO: student no})}
 \date{\today}
 
 \begin{document}
@@ -169,18 +169,22 @@ The system uses a commit-reveal scheme to ensure fair random number generation:
 
 \subsubsection{Commit Phase (Purchase Stage)}
 
-When buying a ticket, the user provides a hash commitment:
+When buying a ticket, the user provides a hash commitment that mixes
+their random number with their own address as a salt:
 \begin{equation}
-    \text{hash} = \text{keccak256}(\text{random\_number})
+    \text{hash} = \text{keccak256}(\text{abi.encodePacked}(\text{rnd\_number}, \text{msg.sender}))
 \end{equation}
 
+The address salt prevents two users that happen to pick the same random
+number from producing identical commitment hashes (and follows the pattern
+recommended in the Ethereum StackExchange link referenced by the assignment).
 The actual random number remains secret until the reveal phase.
 
 \subsubsection{Reveal Phase}
 
-During the reveal stage, users must reveal their actual random numbers. The contract verifies:
+During the reveal stage, users must reveal their actual random numbers. The contract recomputes the hash with the original buyer's address and verifies:
 \begin{equation}
-    \text{keccak256}(\text{revealed\_number}) = \text{stored\_hash}
+    \text{keccak256}(\text{rnd\_number} \,\Vert\, \text{originalBuyer}) = \text{stored\_hash}
 \end{equation}
 
 \subsubsection{Random Combination}
@@ -201,10 +205,15 @@ This ensures that:
 
 \subsubsection{Number of Prizes}
 
-For total collected money $M$, the number of prizes is:
+For total collected money $M$, the number of prizes follows the spec:
 \begin{equation}
     \text{num\_prizes} = \lceil \log_2(M) \rceil + 1
 \end{equation}
+
+In Solidity this is computed without floating-point: $\lceil \log_2(M) \rceil$
+equals the bit length of $M-1$. The implementation in
+\texttt{Lottery.sol::\_getPrizeCount} therefore counts the bits of $(M-1)$
+and adds $1$.
 
 \subsubsection{Prize Amount Formula}
 
@@ -222,7 +231,9 @@ This formula ensures:
 
 \subsubsection{Example Prize Distribution}
 
-For $M = 1000$ TL:
+For $M = 1000$ TL, $\lceil \log_2(1000) \rceil + 1 = 11$ prizes are
+emitted. The last prize is $0$ TL because the formula telescopes to
+exactly $M$ before that index.
 \begin{table}[H]
     \centering
     \begin{tabular}{@{}ccc@{}}
@@ -239,6 +250,7 @@ For $M = 1000$ TL:
         8 & $\lfloor 1000/256 \rfloor + (7 \mod 2)$ & 4 \\
         9 & $\lfloor 1000/512 \rfloor + (3 \mod 2)$ & 2 \\
         10 & $\lfloor 1000/1024 \rfloor + (1 \mod 2)$ & 1 \\
+        11 & $\lfloor 1000/2048 \rfloor + (0 \mod 2)$ & 0 \\
         \midrule
         \textbf{Total} & & \textbf{1000} \\
         \bottomrule
@@ -293,27 +305,33 @@ The Lottery contract implements 14 required interface functions:
 
 \subsection{Test Suite Overview}
 
-The project includes a comprehensive test suite with 42 test cases covering:
+The project includes a comprehensive test suite with 45 test cases covering:
 \begin{itemize}
     \item Basic functionality (deposit, withdraw, buy, reveal)
-    \item Multi-user scenarios with dynamic address generation
+    \item Multi-user scenarios with dynamic address generation (5--250 users)
     \item Stage transition validation
-    \item Prize distribution and collection
+    \item Prize distribution that asserts the contract result against the spec formula
+    \item Salted hash uniqueness (two users picking the same random number)
+    \item Direct ERC721 \texttt{transferFrom} bypass is rejected
     \item Edge cases and error handling
 \end{itemize}
 
 \subsection{Multi-User Tests}
 
-The test suite includes tests with varying numbers of participants:
+Every multi-user test below funds freshly generated wallets at runtime
+(\texttt{ethers.Wallet.createRandom()}) before letting them participate,
+so no Hardhat default signer is reused as a participant.
 
 \begin{table}[H]
     \centering
     \begin{tabular}{@{}cc@{}}
         \toprule
-        \textbf{Test Case} & \textbf{Number of Users} \\
+        \textbf{Test Case} & \textbf{Number of Users (dynamic)} \\
         \midrule
-        Basic multi-user & 5 \\
-        Medium scale & 10 \\
+        Small scale 1 & 5 \\
+        Small scale 2 & 10 \\
+        Medium scale 1 & 20 \\
+        Medium scale 2 & 50 \\
         Large scale & 100 \\
         Stress test 1 & 200 \\
         Stress test 2 & 250 \\
@@ -344,36 +362,59 @@ Test addresses are generated dynamically at runtime:
 
 \subsection{Test Results}
 
-All 42 tests pass successfully:
+All 45 tests pass successfully:
 
 \begin{figure}[H]
     \centering
     \includegraphics[width=0.9\textwidth]{test-results.png}
-    \caption{Test Suite Results - 42 Tests Passing}
+    \caption{Test Suite Results}
     \label{fig:tests}
 \end{figure}
 
 %------------------------------------------------------------------------------
 \section{Gas Usage Analysis}
 
-Gas optimization is critical for Ethereum applications. The following table shows average gas consumption for key operations:
+Gas optimization is critical for Ethereum applications. The figures below
+are taken from the latest \texttt{npm run test:gas} run
+(\texttt{gas-report.txt} in the project root) and reflect the contracts
+in their final, audited state.
 
 \begin{table}[H]
     \centering
-    \begin{tabular}{@{}lrr@{}}
+    \begin{tabular}{@{}lrrr@{}}
         \toprule
-        \textbf{Function} & \textbf{Average Gas} & \textbf{Approx. Cost (at 20 gwei)} \\
+        \textbf{Function} & \textbf{Min} & \textbf{Avg} & \textbf{Max} \\
         \midrule
-        \texttt{buyTicket} & 235,042 & 0.0047 ETH \\
-        \texttt{revealRndNumber} & 76,131 & 0.0015 ETH \\
-        \texttt{depositTL} & 61,800 & 0.0012 ETH \\
-        \texttt{collectTicketPrize} & 94,201 & 0.0019 ETH \\
-        \texttt{transferRevealedTicketTo} & 113,659 & 0.0023 ETH \\
-        \texttt{withdrawTL} & 61,317 & 0.0012 ETH \\
+        \texttt{buyTicket}                 & 194,757 & 234,314 & 267,957 \\
+        \texttt{revealRndNumber}           & 66,959  & 72,770  & 106,007 \\
+        \texttt{depositTL}                 & 57,147  & 58,082  & 83,859 \\
+        \texttt{withdrawTL}                & --       & 61,317  & --      \\
+        \texttt{collectTicketPrize}        & 73,974  & 95,859  & 119,622 \\
+        \texttt{transferRevealedTicketTo}  & --       & 114,120 & --      \\
+        \midrule
+        \texttt{TLToken.approve}           & 46,307  & 46,307  & 46,319 \\
+        \texttt{TLToken.mint}              & 50,849  & 65,508  & 67,961 \\
+        \texttt{TLToken.mintTo}            & 51,232  & 51,443  & 68,356 \\
+        \texttt{LotteryTicket.setLotteryContract} & --  & 46,226  & --     \\
         \bottomrule
     \end{tabular}
-    \caption{Gas Usage for Key Functions}
+    \caption{Gas Usage for Key Functions (units of gas)}
     \label{tab:gas}
+\end{table}
+
+\begin{table}[H]
+    \centering
+    \begin{tabular}{@{}lr@{}}
+        \toprule
+        \textbf{Contract} & \textbf{Deployment Gas} \\
+        \midrule
+        \texttt{Lottery}        & 1,699,741 \\
+        \texttt{LotteryTicket}  & 1,205,645 \\
+        \texttt{TLToken}        & 522,137 \\
+        \bottomrule
+    \end{tabular}
+    \caption{Deployment Gas}
+    \label{tab:deploygas}
 \end{table}
 
 The \texttt{buyTicket} function has the highest gas cost because it:
@@ -382,6 +423,12 @@ The \texttt{buyTicket} function has the highest gas cost because it:
     \item Updates multiple storage mappings
     \item Emits events for ticket purchase
 \end{itemize}
+
+All view functions (\texttt{getLastBoughtTicketNo}, \texttt{getIthOwnedTicketNo},
+\texttt{getWinningTickets}, \texttt{getPrizeCollectionInfo}, \texttt{getIthWinningTicket},
+\texttt{getLotteryNo}, \texttt{getTotalLotteryMoneyCollected},
+\texttt{getLotteryDuration}) are read-only and consume \emph{no on-chain gas}
+when invoked off-chain via \texttt{eth\_call}.
 
 %------------------------------------------------------------------------------
 \section{Deployment}
@@ -498,15 +545,72 @@ The commit-reveal scheme prevents:
 \end{itemize}
 
 %------------------------------------------------------------------------------
+\section{Tooling Note: Hardhat Version}
+
+The assignment specifies Hardhat~3 as the development platform. We
+developed and tested against Hardhat~2.28.6 (the latest stable Hardhat~2
+release at the time of writing) because the surrounding plugin ecosystem
+required by the spec --- in particular
+\texttt{@nomicfoundation/hardhat-toolbox}, \texttt{hardhat-gas-reporter},
+and the TypeChain integration --- did not yet have stable Hardhat~3
+releases when this project was written. All other requirements
+(ethers.js, Chai assertions, dynamic-address tests, deployment scripts)
+are met. Migrating to Hardhat~3 once its plugin matrix stabilises is
+straightforward as the contracts themselves are tooling-agnostic.
+
+%------------------------------------------------------------------------------
+\section{Task Achievement Table}
+
+\begin{table}[H]
+    \centering
+    \small
+    \begin{tabular}{@{}p{11cm}ccc@{}}
+        \toprule
+        \textbf{Item} & \textbf{Yes} & \textbf{Partial} & \textbf{No} \\
+        \midrule
+        Documentation with at least 6 pages                          & \checkmark &  &  \\
+        Average gas usages for the interface functions               & \checkmark &  &  \\
+        Comments in code                                             & \checkmark &  &  \\
+        Hardhat development platform used                            &  & \checkmark (HH 2.28.6) &  \\
+        Solidity smart contract code submitted                       & \checkmark &  &  \\
+        Contract deployment script written                           & \checkmark &  &  \\
+        Chai assertion tests written                                 & \checkmark &  &  \\
+        \texttt{depositTL} implemented and works                     & \checkmark &  &  \\
+        \texttt{withdrawTL} implemented and works                    & \checkmark &  &  \\
+        \texttt{buyTicket} implemented and works                     & \checkmark &  &  \\
+        \texttt{revealRndNumber} implemented and works               & \checkmark &  &  \\
+        \texttt{transferRevealedTicketTo} implemented and works      & \checkmark &  &  \\
+        \texttt{getLastBoughtTicketNo} implemented and works         & \checkmark &  &  \\
+        \texttt{getIthOwnedTicketNo} implemented and works           & \checkmark &  &  \\
+        \texttt{getWinningTickets} implemented and works             & \checkmark &  &  \\
+        \texttt{collectTicketPrize} implemented and works            & \checkmark &  &  \\
+        \texttt{getPrizeCollectionInfo} implemented and works        & \checkmark &  &  \\
+        \texttt{getIthWinningTicket} implemented and works           & \checkmark &  &  \\
+        \texttt{getLotteryNo} implemented and works                  & \checkmark &  &  \\
+        \texttt{getTotalLotteryMoneyCollected} implemented and works & \checkmark &  &  \\
+        \texttt{getLotteryDuration} implemented and works            & \checkmark &  &  \\
+        Multi-user tests use dynamically generated addresses         & \checkmark &  &  \\
+        Tested with 5 dynamically generated addresses                & \checkmark &  &  \\
+        Tested with 10 dynamically generated addresses               & \checkmark &  &  \\
+        Tested with 100 dynamically generated addresses              & \checkmark &  &  \\
+        Tested with 200 dynamically generated addresses              & \checkmark &  &  \\
+        Tested with more than 200 (250) dynamically generated addresses & \checkmark &  &  \\
+        \bottomrule
+    \end{tabular}
+    \caption{Task Achievement Table}
+    \label{tab:achievement}
+\end{table}
+
+%------------------------------------------------------------------------------
 \section{Conclusion}
 
 This project successfully implements a fully autonomous decentralized lottery system with the following achievements:
 
 \begin{itemize}
     \item Three interconnected smart contracts (ERC20, ERC721, Lottery)
-    \item Fair random number generation using commit-reveal scheme
-    \item Complete prize distribution ensuring all money is allocated
-    \item Comprehensive test suite with 42 tests including stress tests
+    \item Fair random number generation using a salted commit-reveal scheme
+    \item Complete prize distribution ensuring all money is allocated, exactly matching the spec formula
+    \item Comprehensive test suite with 45 tests including stress tests up to 250 dynamically-generated addresses
     \item Working frontend application for user interaction
     \item Successful deployment to Sepolia testnet
 \end{itemize}

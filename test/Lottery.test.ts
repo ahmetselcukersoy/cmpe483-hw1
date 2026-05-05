@@ -38,11 +38,46 @@ describe("Lottery System", function () {
     return { tlToken, lotteryTicket, lottery, owner, user1, user2, user3 };
   }
 
-  // Helper to generate random number and its hash
-  function generateRandom(): { rndNumber: bigint; hash: string } {
+  // Helper to generate a random number and its salted commitment hash.
+  // The contract verifies keccak256(abi.encodePacked(rnd_number, originalBuyer))
+  // so the buyer's address must be mixed in here as well.
+  function generateRandom(buyer: string): { rndNumber: bigint; hash: string } {
     const rndNumber = BigInt(Math.floor(Math.random() * Number.MAX_SAFE_INTEGER));
-    const hash = ethers.keccak256(ethers.AbiCoder.defaultAbiCoder().encode(["uint256"], [rndNumber]));
+    const hash = ethers.solidityPackedKeccak256(
+      ["uint256", "address"],
+      [rndNumber, buyer]
+    );
     return { rndNumber, hash };
+  }
+
+  // Dynamically create funded random wallets so tests do not rely on
+  // Hardhat's default signer set.
+  async function generateUsers(
+    count: number,
+    funder: HardhatEthersSigner
+  ): Promise<HardhatEthersSigner[]> {
+    const users: HardhatEthersSigner[] = [];
+    for (let i = 0; i < count; i++) {
+      const wallet = ethers.Wallet.createRandom().connect(ethers.provider);
+      await funder.sendTransaction({
+        to: wallet.address,
+        value: ethers.parseEther("1"),
+      });
+      users.push(wallet as unknown as HardhatEthersSigner);
+    }
+    return users;
+  }
+
+  // Setup helper for dynamically-generated users (mintTo + approve + deposit).
+  async function setupDynamicUser(
+    tlToken: TLToken,
+    lottery: Lottery,
+    user: HardhatEthersSigner,
+    amount: bigint
+  ) {
+    await tlToken.mintTo(user.address, amount);
+    await tlToken.connect(user).approve(await lottery.getAddress(), amount);
+    await lottery.connect(user).depositTL(amount);
   }
 
   // Helper to setup user with TL tokens and deposit
@@ -120,10 +155,10 @@ describe("Lottery System", function () {
       const { tlToken, lottery, lotteryTicket, user1 } = await loadFixture(deployLotteryFixture);
 
       await setupUser(tlToken, lottery, user1, 100n);
-      const { hash } = generateRandom();
+      const { hash } = generateRandom(user1.address);
 
       const tx = await lottery.connect(user1).buyTicket(hash);
-      const receipt = await tx.wait();
+      await tx.wait();
 
       expect(await lottery.balances(user1.address)).to.equal(50n);
       expect(await lotteryTicket.ownerOf(1)).to.equal(user1.address);
@@ -133,7 +168,7 @@ describe("Lottery System", function () {
       const { tlToken, lottery, user1 } = await loadFixture(deployLotteryFixture);
 
       await setupUser(tlToken, lottery, user1, 100n);
-      const { hash } = generateRandom();
+      const { hash } = generateRandom(user1.address);
 
       await lottery.connect(user1).buyTicket(hash);
       const ticket = await lottery.tickets(1);
@@ -148,7 +183,7 @@ describe("Lottery System", function () {
       const { tlToken, lottery, user1 } = await loadFixture(deployLotteryFixture);
 
       await setupUser(tlToken, lottery, user1, 100n);
-      const { hash } = generateRandom();
+      const { hash } = generateRandom(user1.address);
 
       // Move past purchase stage
       await time.increase(PURCHASE_DURATION + 1);
@@ -163,7 +198,7 @@ describe("Lottery System", function () {
       const { tlToken, lottery, user1 } = await loadFixture(deployLotteryFixture);
 
       await setupUser(tlToken, lottery, user1, 40n);
-      const { hash } = generateRandom();
+      const { hash } = generateRandom(user1.address);
 
       await expect(lottery.connect(user1).buyTicket(hash)).to.be.revertedWithCustomError(
         lottery,
@@ -177,7 +212,7 @@ describe("Lottery System", function () {
       const { tlToken, lottery, user1 } = await loadFixture(deployLotteryFixture);
 
       await setupUser(tlToken, lottery, user1, 100n);
-      const { rndNumber, hash } = generateRandom();
+      const { rndNumber, hash } = generateRandom(user1.address);
 
       await lottery.connect(user1).buyTicket(hash);
 
@@ -195,7 +230,7 @@ describe("Lottery System", function () {
       const { tlToken, lottery, user1 } = await loadFixture(deployLotteryFixture);
 
       await setupUser(tlToken, lottery, user1, 100n);
-      const { hash } = generateRandom();
+      const { hash } = generateRandom(user1.address);
       const wrongNumber = 12345n;
 
       await lottery.connect(user1).buyTicket(hash);
@@ -211,7 +246,7 @@ describe("Lottery System", function () {
       const { tlToken, lottery, user1 } = await loadFixture(deployLotteryFixture);
 
       await setupUser(tlToken, lottery, user1, 100n);
-      const { rndNumber, hash } = generateRandom();
+      const { rndNumber, hash } = generateRandom(user1.address);
 
       await lottery.connect(user1).buyTicket(hash);
 
@@ -225,7 +260,7 @@ describe("Lottery System", function () {
       const { tlToken, lottery, user1 } = await loadFixture(deployLotteryFixture);
 
       await setupUser(tlToken, lottery, user1, 100n);
-      const { rndNumber, hash } = generateRandom();
+      const { rndNumber, hash } = generateRandom(user1.address);
 
       await lottery.connect(user1).buyTicket(hash);
       await time.increase(PURCHASE_DURATION + REVEAL_DURATION + 1);
@@ -240,7 +275,7 @@ describe("Lottery System", function () {
       const { tlToken, lottery, user1 } = await loadFixture(deployLotteryFixture);
 
       await setupUser(tlToken, lottery, user1, 100n);
-      const { rndNumber, hash } = generateRandom();
+      const { rndNumber, hash } = generateRandom(user1.address);
 
       await lottery.connect(user1).buyTicket(hash);
       await time.increase(PURCHASE_DURATION + 1);
@@ -258,8 +293,8 @@ describe("Lottery System", function () {
       await setupUser(tlToken, lottery, user1, 100n);
       await setupUser(tlToken, lottery, user2, 100n);
 
-      const rnd1 = generateRandom();
-      const rnd2 = generateRandom();
+      const rnd1 = generateRandom(user1.address);
+      const rnd2 = generateRandom(user2.address);
 
       await lottery.connect(user1).buyTicket(rnd1.hash);
       await lottery.connect(user2).buyTicket(rnd2.hash);
@@ -272,6 +307,38 @@ describe("Lottery System", function () {
       const combined = await lottery.getCombinedRandom(1);
       expect(combined).to.equal(rnd1.rndNumber ^ rnd2.rndNumber);
     });
+
+    it("Should derive distinct hashes when two users pick the same random number", async function () {
+      // This test guards the address-salt fix: identical rnd_number values
+      // committed by different buyers must produce different hashes.
+      const { tlToken, lottery, user1, user2 } = await loadFixture(deployLotteryFixture);
+
+      await setupUser(tlToken, lottery, user1, 100n);
+      await setupUser(tlToken, lottery, user2, 100n);
+
+      const sharedRnd = 424242n;
+      const hash1 = ethers.solidityPackedKeccak256(
+        ["uint256", "address"],
+        [sharedRnd, user1.address]
+      );
+      const hash2 = ethers.solidityPackedKeccak256(
+        ["uint256", "address"],
+        [sharedRnd, user2.address]
+      );
+      expect(hash1).to.not.equal(hash2);
+
+      await lottery.connect(user1).buyTicket(hash1);
+      await lottery.connect(user2).buyTicket(hash2);
+
+      await time.increase(PURCHASE_DURATION + 1);
+
+      // user1's reveal must succeed against their own salted hash...
+      await lottery.connect(user1).revealRndNumber(1, sharedRnd);
+      // ...and user2's reveal of the same rnd must also succeed against their salted hash.
+      await lottery.connect(user2).revealRndNumber(2, sharedRnd);
+
+      expect(await lottery.getRevealedCount(1)).to.equal(2n);
+    });
   });
 
   describe("Transfer Revealed Ticket", function () {
@@ -279,7 +346,7 @@ describe("Lottery System", function () {
       const { tlToken, lottery, lotteryTicket, user1, user2 } = await loadFixture(deployLotteryFixture);
 
       await setupUser(tlToken, lottery, user1, 100n);
-      const { rndNumber, hash } = generateRandom();
+      const { rndNumber, hash } = generateRandom(user1.address);
 
       await lottery.connect(user1).buyTicket(hash);
       await time.increase(PURCHASE_DURATION + 1);
@@ -294,13 +361,29 @@ describe("Lottery System", function () {
       const { tlToken, lottery, user1, user2 } = await loadFixture(deployLotteryFixture);
 
       await setupUser(tlToken, lottery, user1, 100n);
-      const { hash } = generateRandom();
+      const { hash } = generateRandom(user1.address);
 
       await lottery.connect(user1).buyTicket(hash);
 
       await expect(
         lottery.connect(user1).transferRevealedTicketTo(1, user2.address)
       ).to.be.revertedWithCustomError(lottery, "TicketNotRevealed");
+    });
+
+    it("Should block direct ERC721 transferFrom (only the Lottery may move tickets)", async function () {
+      // Without the LotteryTicket._update guard a holder could call transferFrom
+      // on the NFT directly, bypassing transferRevealedTicketTo and the
+      // "must be revealed" rule. Verify the guard reverts such attempts.
+      const { tlToken, lottery, lotteryTicket, user1, user2 } =
+        await loadFixture(deployLotteryFixture);
+
+      await setupUser(tlToken, lottery, user1, 100n);
+      const { hash } = generateRandom(user1.address);
+      await lottery.connect(user1).buyTicket(hash);
+
+      await expect(
+        lotteryTicket.connect(user1).transferFrom(user1.address, user2.address, 1)
+      ).to.be.revertedWithCustomError(lotteryTicket, "OnlyLottery");
     });
   });
 
@@ -309,8 +392,8 @@ describe("Lottery System", function () {
       const { tlToken, lottery, user1 } = await loadFixture(deployLotteryFixture);
 
       await setupUser(tlToken, lottery, user1, 200n);
-      const rnd1 = generateRandom();
-      const rnd2 = generateRandom();
+      const rnd1 = generateRandom(user1.address);
+      const rnd2 = generateRandom(user1.address);
 
       await lottery.connect(user1).buyTicket(rnd1.hash);
       await lottery.connect(user1).buyTicket(rnd2.hash);
@@ -324,8 +407,8 @@ describe("Lottery System", function () {
       const { tlToken, lottery, user1 } = await loadFixture(deployLotteryFixture);
 
       await setupUser(tlToken, lottery, user1, 200n);
-      const rnd1 = generateRandom();
-      const rnd2 = generateRandom();
+      const rnd1 = generateRandom(user1.address);
+      const rnd2 = generateRandom(user1.address);
 
       await lottery.connect(user1).buyTicket(rnd1.hash);
       await lottery.connect(user1).buyTicket(rnd2.hash);
@@ -362,8 +445,8 @@ describe("Lottery System", function () {
       const { tlToken, lottery, user1 } = await loadFixture(deployLotteryFixture);
 
       await setupUser(tlToken, lottery, user1, 200n);
-      await lottery.connect(user1).buyTicket(generateRandom().hash);
-      await lottery.connect(user1).buyTicket(generateRandom().hash);
+      await lottery.connect(user1).buyTicket(generateRandom(user1.address).hash);
+      await lottery.connect(user1).buyTicket(generateRandom(user1.address).hash);
 
       const total = await lottery.getTotalLotteryMoneyCollected(1);
       expect(total).to.equal(100n);
@@ -371,21 +454,77 @@ describe("Lottery System", function () {
   });
 
   describe("Prize Calculation", function () {
-    it("Should calculate correct prize amounts", async function () {
+    // JS reference implementation of the spec formula. Used to assert the
+    // contract returns the same per-prize amounts.
+    function expectedPrize(M: bigint, i: bigint): bigint {
+      const part1 = M / (1n << i);             // floor(M / 2^i)
+      const part2 = (M / (1n << (i - 1n))) % 2n; // floor(M / 2^(i-1)) mod 2
+      return part1 + part2;
+    }
+
+    function expectedPrizeCount(M: bigint): bigint {
+      // ceil(log2(M)) + 1
+      if (M === 0n) return 0n;
+      let ceilLog2 = 0n;
+      let temp = M - 1n;
+      while (temp > 0n) {
+        temp >>= 1n;
+        ceilLog2++;
+      }
+      return ceilLog2 + 1n;
+    }
+
+    it("Should match the spec formula for every prize index and sum to M", async function () {
       const { tlToken, lottery, user1 } = await loadFixture(deployLotteryFixture);
 
-      // Buy 10 tickets = 500 TL total
-      await setupUser(tlToken, lottery, user1, 500n);
-      for (let i = 0; i < 10; i++) {
-        await lottery.connect(user1).buyTicket(generateRandom().hash);
+      const ticketCount = 10; // M = 500 TL, exercises an odd-bit-pattern total
+      await setupUser(tlToken, lottery, user1, BigInt(ticketCount * 50));
+
+      const rnds: { rndNumber: bigint; hash: string }[] = [];
+      for (let i = 0; i < ticketCount; i++) {
+        const rnd = generateRandom(user1.address);
+        rnds.push(rnd);
+        await lottery.connect(user1).buyTicket(rnd.hash);
       }
 
-      // Reveal all tickets
       await time.increase(PURCHASE_DURATION + 1);
-      for (let i = 1; i <= 10; i++) {
-        const { rndNumber, hash } = generateRandom();
-        // Need to use correct hash for each ticket
-        // Actually we need to track the random numbers
+      for (let i = 0; i < ticketCount; i++) {
+        await lottery.connect(user1).revealRndNumber(i + 1, rnds[i].rndNumber);
+      }
+      await time.increase(REVEAL_DURATION + 1);
+
+      const totalMoney = await lottery.getTotalLotteryMoneyCollected(1);
+      const winners = await lottery.getWinningTickets(1);
+
+      // Contract prize count must equal ceil(log2(M)) + 1.
+      expect(BigInt(winners.length)).to.equal(expectedPrizeCount(totalMoney));
+
+      // Each prize amount must match the spec formula exactly.
+      let sum = 0n;
+      for (let i = 1; i <= winners.length; i++) {
+        const [, amount] = await lottery.getIthWinningTicket(i, 1);
+        expect(amount).to.equal(expectedPrize(totalMoney, BigInt(i)));
+        sum += amount;
+      }
+
+      // The formula is designed so the prizes telescope to exactly M.
+      expect(sum).to.equal(totalMoney);
+    });
+
+    it("Should produce prize counts following ceil(log2(M)) + 1 across several M values", async function () {
+      // Pure-arithmetic spot checks against the spec formula.
+      const cases: [bigint, bigint][] = [
+        [1n, 1n],
+        [2n, 2n],
+        [3n, 3n],
+        [4n, 3n],
+        [5n, 4n],
+        [50n, 7n],   // ceil(log2(50)) = 6
+        [500n, 10n], // ceil(log2(500)) = 9
+        [1000n, 11n] // ceil(log2(1000)) = 10
+      ];
+      for (const [M, expected] of cases) {
+        expect(expectedPrizeCount(M)).to.equal(expected);
       }
     });
   });
@@ -394,35 +533,31 @@ describe("Lottery System", function () {
     it("Should complete a full lottery cycle with multiple users", async function () {
       const { tlToken, lottery, user1, user2, user3 } = await loadFixture(deployLotteryFixture);
 
-      // Setup users
       await setupUser(tlToken, lottery, user1, 200n);
       await setupUser(tlToken, lottery, user2, 200n);
       await setupUser(tlToken, lottery, user3, 200n);
 
-      // Generate and store random numbers
-      const rnds = [generateRandom(), generateRandom(), generateRandom()];
+      const rnds = [
+        generateRandom(user1.address),
+        generateRandom(user2.address),
+        generateRandom(user3.address),
+      ];
 
-      // Buy tickets
       await lottery.connect(user1).buyTicket(rnds[0].hash);
       await lottery.connect(user2).buyTicket(rnds[1].hash);
       await lottery.connect(user3).buyTicket(rnds[2].hash);
 
-      // Move to reveal stage
       await time.increase(PURCHASE_DURATION + 1);
 
-      // Reveal
       await lottery.connect(user1).revealRndNumber(1, rnds[0].rndNumber);
       await lottery.connect(user2).revealRndNumber(2, rnds[1].rndNumber);
       await lottery.connect(user3).revealRndNumber(3, rnds[2].rndNumber);
 
-      // Move past lottery end
       await time.increase(REVEAL_DURATION + 1);
 
-      // Get winning tickets
       const winners = await lottery.getWinningTickets(1);
       expect(winners.length).to.be.greaterThan(0);
 
-      // Get total money
       const totalMoney = await lottery.getTotalLotteryMoneyCollected(1);
       expect(totalMoney).to.equal(150n);
     });
@@ -430,9 +565,8 @@ describe("Lottery System", function () {
     it("Should allow winner to collect prize", async function () {
       const { tlToken, lottery, user1 } = await loadFixture(deployLotteryFixture);
 
-      // Single user buys single ticket
       await setupUser(tlToken, lottery, user1, 100n);
-      const { rndNumber, hash } = generateRandom();
+      const { rndNumber, hash } = generateRandom(user1.address);
 
       await lottery.connect(user1).buyTicket(hash);
       await time.increase(PURCHASE_DURATION + 1);
@@ -440,13 +574,11 @@ describe("Lottery System", function () {
       await time.increase(REVEAL_DURATION + 1);
 
       // With only one ticket, user1 wins all prizes
-      const winners = await lottery.getWinningTickets(1);
+      await lottery.getWinningTickets(1);
 
-      // Get first prize info
       const [ticketNo, amount] = await lottery.getIthWinningTicket(1, 1);
       expect(ticketNo).to.equal(1n);
 
-      // Collect prize
       const balanceBefore = await lottery.balances(user1.address);
       await lottery.connect(user1).collectTicketPrize(1, 1);
       const balanceAfter = await lottery.balances(user1.address);
@@ -458,7 +590,7 @@ describe("Lottery System", function () {
       const { tlToken, lottery, user1 } = await loadFixture(deployLotteryFixture);
 
       await setupUser(tlToken, lottery, user1, 100n);
-      const { rndNumber, hash } = generateRandom();
+      const { rndNumber, hash } = generateRandom(user1.address);
 
       await lottery.connect(user1).buyTicket(hash);
       await time.increase(PURCHASE_DURATION + 1);
@@ -473,191 +605,69 @@ describe("Lottery System", function () {
     });
   });
 
-  describe("Multi-User Tests (5 addresses)", function () {
-    it("Should handle 5 users buying and revealing tickets", async function () {
-      const { tlToken, lottery } = await loadFixture(deployLotteryFixture);
-      const signers = await ethers.getSigners();
-      const users = signers.slice(0, 5);
-      const rnds: { rndNumber: bigint; hash: string }[] = [];
-
-      // Setup and buy tickets
-      for (const user of users) {
-        await setupUser(tlToken, lottery, user, 100n);
-        const rnd = generateRandom();
-        rnds.push(rnd);
-        await lottery.connect(user).buyTicket(rnd.hash);
-      }
-
-      // Verify total money
-      expect(await lottery.getTotalLotteryMoneyCollected(1)).to.equal(250n);
-
-      // Move to reveal stage
-      await time.increase(PURCHASE_DURATION + 1);
-
-      // Reveal
-      for (let i = 0; i < users.length; i++) {
-        await lottery.connect(users[i]).revealRndNumber(i + 1, rnds[i].rndNumber);
-      }
-
-      // Verify revealed count
-      expect(await lottery.getRevealedCount(1)).to.equal(5n);
-
-      // Move past lottery
-      await time.increase(REVEAL_DURATION + 1);
-
-      // Get winners
-      const winners = await lottery.getWinningTickets(1);
-      expect(winners.length).to.be.greaterThan(0);
-    });
-  });
-
-  describe("Multi-User Tests (10 addresses)", function () {
-    it("Should handle 10 users buying and revealing tickets", async function () {
-      const { tlToken, lottery } = await loadFixture(deployLotteryFixture);
-      const signers = await ethers.getSigners();
-      const users = signers.slice(0, 10);
-      const rnds: { rndNumber: bigint; hash: string }[] = [];
-
-      // Setup and buy tickets
-      for (const user of users) {
-        await setupUser(tlToken, lottery, user, 100n);
-        const rnd = generateRandom();
-        rnds.push(rnd);
-        await lottery.connect(user).buyTicket(rnd.hash);
-      }
-
-      expect(await lottery.getTotalLotteryMoneyCollected(1)).to.equal(500n);
-
-      await time.increase(PURCHASE_DURATION + 1);
-
-      for (let i = 0; i < users.length; i++) {
-        await lottery.connect(users[i]).revealRndNumber(i + 1, rnds[i].rndNumber);
-      }
-
-      expect(await lottery.getRevealedCount(1)).to.equal(10n);
-
-      await time.increase(REVEAL_DURATION + 1);
-
-      const winners = await lottery.getWinningTickets(1);
-      expect(winners.length).to.be.greaterThan(0);
-    });
-  });
-
-  describe("Dynamic Address Generation Tests", function () {
-    async function generateUsers(
+  // All multi-user tests below generate fresh wallets at runtime, fund them,
+  // then have them buy/reveal — exactly the flow the spec requires.
+  describe("Multi-User Tests (dynamic addresses)", function () {
+    async function runMultiUserCycle(
       count: number,
+      tlToken: TLToken,
+      lottery: Lottery,
       owner: HardhatEthersSigner
-    ): Promise<HardhatEthersSigner[]> {
-      const users: HardhatEthersSigner[] = [];
-      for (let i = 0; i < count; i++) {
-        const wallet = ethers.Wallet.createRandom().connect(ethers.provider);
-        // Fund with ETH for gas
-        await owner.sendTransaction({
-          to: wallet.address,
-          value: ethers.parseEther("1"),
-        });
-        users.push(wallet as unknown as HardhatEthersSigner);
+    ) {
+      const users = await generateUsers(count, owner);
+      const rnds: { rndNumber: bigint; hash: string }[] = [];
+
+      for (const user of users) {
+        await setupDynamicUser(tlToken, lottery, user, 100n);
+        const rnd = generateRandom(user.address);
+        rnds.push(rnd);
+        await lottery.connect(user).buyTicket(rnd.hash);
       }
-      return users;
+
+      expect(await lottery.getTotalLotteryMoneyCollected(1)).to.equal(BigInt(count * 50));
+
+      await time.increase(PURCHASE_DURATION + 1);
+
+      for (let i = 0; i < users.length; i++) {
+        await lottery.connect(users[i]).revealRndNumber(i + 1, rnds[i].rndNumber);
+      }
+      expect(await lottery.getRevealedCount(1)).to.equal(BigInt(count));
+
+      await time.increase(REVEAL_DURATION + 1);
+
+      const winners = await lottery.getWinningTickets(1);
+      expect(winners.length).to.be.greaterThan(0);
+      return { users, winners };
     }
+
+    it("Should handle 5 dynamically generated users", async function () {
+      this.timeout(60000);
+      const { tlToken, lottery, owner } = await loadFixture(deployLotteryFixture);
+      await runMultiUserCycle(5, tlToken, lottery, owner);
+    });
+
+    it("Should handle 10 dynamically generated users", async function () {
+      this.timeout(120000);
+      const { tlToken, lottery, owner } = await loadFixture(deployLotteryFixture);
+      await runMultiUserCycle(10, tlToken, lottery, owner);
+    });
 
     it("Should handle 20 dynamically generated users", async function () {
       this.timeout(120000);
       const { tlToken, lottery, owner } = await loadFixture(deployLotteryFixture);
-      const users = await generateUsers(20, owner);
-      const rnds: { rndNumber: bigint; hash: string }[] = [];
-
-      // Setup and buy tickets
-      for (const user of users) {
-        await tlToken.mintTo(user.address, 100n);
-        await tlToken.connect(user).approve(await lottery.getAddress(), 100n);
-        await lottery.connect(user).depositTL(100n);
-        const rnd = generateRandom();
-        rnds.push(rnd);
-        await lottery.connect(user).buyTicket(rnd.hash);
-      }
-
-      expect(await lottery.getTotalLotteryMoneyCollected(1)).to.equal(1000n);
-
-      await time.increase(PURCHASE_DURATION + 1);
-
-      for (let i = 0; i < users.length; i++) {
-        await lottery.connect(users[i]).revealRndNumber(i + 1, rnds[i].rndNumber);
-      }
-
-      expect(await lottery.getRevealedCount(1)).to.equal(20n);
-
-      await time.increase(REVEAL_DURATION + 1);
-
-      const winners = await lottery.getWinningTickets(1);
-      expect(winners.length).to.be.greaterThan(0);
+      await runMultiUserCycle(20, tlToken, lottery, owner);
     });
 
     it("Should handle 50 dynamically generated users", async function () {
       this.timeout(300000);
       const { tlToken, lottery, owner } = await loadFixture(deployLotteryFixture);
-      const users = await generateUsers(50, owner);
-      const rnds: { rndNumber: bigint; hash: string }[] = [];
-
-      for (const user of users) {
-        await tlToken.mintTo(user.address, 100n);
-        await tlToken.connect(user).approve(await lottery.getAddress(), 100n);
-        await lottery.connect(user).depositTL(100n);
-        const rnd = generateRandom();
-        rnds.push(rnd);
-        await lottery.connect(user).buyTicket(rnd.hash);
-      }
-
-      expect(await lottery.getTotalLotteryMoneyCollected(1)).to.equal(2500n);
-
-      await time.increase(PURCHASE_DURATION + 1);
-
-      for (let i = 0; i < users.length; i++) {
-        await lottery.connect(users[i]).revealRndNumber(i + 1, rnds[i].rndNumber);
-      }
-
-      expect(await lottery.getRevealedCount(1)).to.equal(50n);
-
-      await time.increase(REVEAL_DURATION + 1);
-
-      const winners = await lottery.getWinningTickets(1);
-      expect(winners.length).to.be.greaterThan(0);
+      await runMultiUserCycle(50, tlToken, lottery, owner);
     });
 
     it("Should handle 100 dynamically generated users", async function () {
       this.timeout(600000);
       const { tlToken, lottery, owner } = await loadFixture(deployLotteryFixture);
-      const users = await generateUsers(100, owner);
-      const rnds: { rndNumber: bigint; hash: string }[] = [];
-
-      // Setup and buy tickets for all 100 users
-      for (const user of users) {
-        await tlToken.mintTo(user.address, 100n);
-        await tlToken.connect(user).approve(await lottery.getAddress(), 100n);
-        await lottery.connect(user).depositTL(100n);
-        const rnd = generateRandom();
-        rnds.push(rnd);
-        await lottery.connect(user).buyTicket(rnd.hash);
-      }
-
-      // Verify total: 100 users * 50 TL = 5000 TL
-      expect(await lottery.getTotalLotteryMoneyCollected(1)).to.equal(5000n);
-
-      await time.increase(PURCHASE_DURATION + 1);
-
-      // Reveal all tickets
-      for (let i = 0; i < users.length; i++) {
-        await lottery.connect(users[i]).revealRndNumber(i + 1, rnds[i].rndNumber);
-      }
-
-      expect(await lottery.getRevealedCount(1)).to.equal(100n);
-
-      await time.increase(REVEAL_DURATION + 1);
-
-      const winners = await lottery.getWinningTickets(1);
-      expect(winners.length).to.be.greaterThan(0);
-
-      // Verify prize distribution
+      const { winners } = await runMultiUserCycle(100, tlToken, lottery, owner);
       const totalMoney = await lottery.getTotalLotteryMoneyCollected(1);
       console.log(`    100 users test: Total money = ${totalMoney} TL, Winners = ${winners.length}`);
     });
@@ -665,36 +675,7 @@ describe("Lottery System", function () {
     it("Should handle 200 dynamically generated users", async function () {
       this.timeout(1200000);
       const { tlToken, lottery, owner } = await loadFixture(deployLotteryFixture);
-      const users = await generateUsers(200, owner);
-      const rnds: { rndNumber: bigint; hash: string }[] = [];
-
-      // Setup and buy tickets for all 200 users
-      for (const user of users) {
-        await tlToken.mintTo(user.address, 100n);
-        await tlToken.connect(user).approve(await lottery.getAddress(), 100n);
-        await lottery.connect(user).depositTL(100n);
-        const rnd = generateRandom();
-        rnds.push(rnd);
-        await lottery.connect(user).buyTicket(rnd.hash);
-      }
-
-      // Verify total: 200 users * 50 TL = 10000 TL
-      expect(await lottery.getTotalLotteryMoneyCollected(1)).to.equal(10000n);
-
-      await time.increase(PURCHASE_DURATION + 1);
-
-      // Reveal all tickets
-      for (let i = 0; i < users.length; i++) {
-        await lottery.connect(users[i]).revealRndNumber(i + 1, rnds[i].rndNumber);
-      }
-
-      expect(await lottery.getRevealedCount(1)).to.equal(200n);
-
-      await time.increase(REVEAL_DURATION + 1);
-
-      const winners = await lottery.getWinningTickets(1);
-      expect(winners.length).to.be.greaterThan(0);
-
+      const { winners } = await runMultiUserCycle(200, tlToken, lottery, owner);
       const totalMoney = await lottery.getTotalLotteryMoneyCollected(1);
       console.log(`    200 users test: Total money = ${totalMoney} TL, Winners = ${winners.length}`);
     });
@@ -702,36 +683,7 @@ describe("Lottery System", function () {
     it("Should handle 250 dynamically generated users (200+ test)", async function () {
       this.timeout(1500000);
       const { tlToken, lottery, owner } = await loadFixture(deployLotteryFixture);
-      const users = await generateUsers(250, owner);
-      const rnds: { rndNumber: bigint; hash: string }[] = [];
-
-      // Setup and buy tickets for all 250 users
-      for (const user of users) {
-        await tlToken.mintTo(user.address, 100n);
-        await tlToken.connect(user).approve(await lottery.getAddress(), 100n);
-        await lottery.connect(user).depositTL(100n);
-        const rnd = generateRandom();
-        rnds.push(rnd);
-        await lottery.connect(user).buyTicket(rnd.hash);
-      }
-
-      // Verify total: 250 users * 50 TL = 12500 TL
-      expect(await lottery.getTotalLotteryMoneyCollected(1)).to.equal(12500n);
-
-      await time.increase(PURCHASE_DURATION + 1);
-
-      // Reveal all tickets
-      for (let i = 0; i < users.length; i++) {
-        await lottery.connect(users[i]).revealRndNumber(i + 1, rnds[i].rndNumber);
-      }
-
-      expect(await lottery.getRevealedCount(1)).to.equal(250n);
-
-      await time.increase(REVEAL_DURATION + 1);
-
-      const winners = await lottery.getWinningTickets(1);
-      expect(winners.length).to.be.greaterThan(0);
-
+      const { winners } = await runMultiUserCycle(250, tlToken, lottery, owner);
       const totalMoney = await lottery.getTotalLotteryMoneyCollected(1);
       console.log(`    250 users test (200+): Total money = ${totalMoney} TL, Winners = ${winners.length}`);
     });
@@ -742,7 +694,7 @@ describe("Lottery System", function () {
       const { tlToken, lottery, user1 } = await loadFixture(deployLotteryFixture);
 
       await setupUser(tlToken, lottery, user1, 100n);
-      const { hash } = generateRandom();
+      const { hash } = generateRandom(user1.address);
 
       await lottery.connect(user1).buyTicket(hash);
 
@@ -761,8 +713,8 @@ describe("Lottery System", function () {
       await setupUser(tlToken, lottery, user1, 100n);
       await setupUser(tlToken, lottery, user2, 100n);
 
-      const rnd1 = generateRandom();
-      const rnd2 = generateRandom();
+      const rnd1 = generateRandom(user1.address);
+      const rnd2 = generateRandom(user2.address);
 
       await lottery.connect(user1).buyTicket(rnd1.hash);
       await lottery.connect(user2).buyTicket(rnd2.hash);
@@ -785,7 +737,7 @@ describe("Lottery System", function () {
 
       // Lottery 1
       await setupUser(tlToken, lottery, user1, 200n);
-      const rnd1 = generateRandom();
+      const rnd1 = generateRandom(user1.address);
       await lottery.connect(user1).buyTicket(rnd1.hash);
 
       // Move to lottery 2
@@ -793,7 +745,7 @@ describe("Lottery System", function () {
 
       expect(await lottery.getCurrentLotteryNo()).to.equal(2n);
 
-      const rnd2 = generateRandom();
+      const rnd2 = generateRandom(user1.address);
       await lottery.connect(user1).buyTicket(rnd2.hash);
 
       // Verify separate lottery data
@@ -805,7 +757,7 @@ describe("Lottery System", function () {
       const { tlToken, lottery, lotteryTicket, user1, user2 } = await loadFixture(deployLotteryFixture);
 
       await setupUser(tlToken, lottery, user1, 100n);
-      const { rndNumber, hash } = generateRandom();
+      const { rndNumber, hash } = generateRandom(user1.address);
 
       await lottery.connect(user1).buyTicket(hash);
       await time.increase(PURCHASE_DURATION + 1);
@@ -835,7 +787,7 @@ describe("Lottery System", function () {
       const rnds: { rndNumber: bigint; hash: string }[] = [];
 
       for (let i = 0; i < ticketCount; i++) {
-        const rnd = generateRandom();
+        const rnd = generateRandom(user1.address);
         rnds.push(rnd);
         await lottery.connect(user1).buyTicket(rnd.hash);
       }
@@ -851,11 +803,10 @@ describe("Lottery System", function () {
       const totalMoney = await lottery.getTotalLotteryMoneyCollected(1);
       const winners = await lottery.getWinningTickets(1);
 
-      // Collect all prizes
+      // Collect all prizes (user1 owns every ticket in this scenario)
       let totalPrizes = 0n;
       for (let i = 1; i <= winners.length; i++) {
         const [ticketNo, amount] = await lottery.getIthWinningTicket(i, 1);
-        // Only collect if user owns this ticket (they own all in this case)
         await lottery.connect(user1).collectTicketPrize(ticketNo, i);
         totalPrizes += amount;
       }

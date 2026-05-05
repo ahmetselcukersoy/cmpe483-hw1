@@ -66,12 +66,14 @@ npm run test:gas
 
 ### Test Coverage
 
-The test suite includes:
+The test suite includes 45 tests covering:
 - Basic functionality (deposit, withdraw, buy ticket, reveal)
-- Multi-user tests with **5, 10, 100, 200, and 250 addresses**
-- Dynamic address generation during runtime
+- Multi-user tests with **5, 10, 20, 50, 100, 200, and 250 dynamically generated addresses**
+- Dynamic address generation during runtime (`ethers.Wallet.createRandom()` + funded with ETH)
 - Stage transition tests (purchase → reveal → ended)
-- Prize distribution and collection tests
+- Prize distribution asserted against the spec formula and a JS reference
+- Salted hash uniqueness (two users picking the same random number)
+- Direct ERC721 `transferFrom` is rejected (only the Lottery contract may move tickets)
 - Edge cases (no reveals, partial reveals, multiple lotteries)
 
 ## Local Development
@@ -124,10 +126,10 @@ npm run deploy:sepolia
 - **After Day 7**: Lottery ends, winners can collect prizes
 
 ### Random Number Generation
-1. User commits hash of random number when buying ticket
-2. User reveals actual number during reveal stage
-3. All revealed numbers are XORed together
-4. Winner index = `hash(combinedRandom, prizeIndex) % revealedCount`
+1. User commits `keccak256(abi.encodePacked(rnd_number, msg.sender))` when buying a ticket (address salt prevents hash collisions between users)
+2. User reveals the actual number during the reveal stage
+3. All revealed numbers are XORed together to form a combined random
+4. Winner index for prize *i* = `keccak256(combinedRandom, i) % revealedCount`
 
 ### Prize Formula
 ```
@@ -157,20 +159,27 @@ Where M is total money collected and i is prize number (1-indexed).
 
 ## Gas Usage
 
-| Function | Avg Gas |
-|----------|---------|
-| buyTicket | 235,042 |
-| revealRndNumber | 76,131 |
-| depositTL | 61,800 |
-| collectTicketPrize | 94,201 |
-| transferRevealedTicketTo | 113,659 |
-| withdrawTL | 61,317 |
+Latest `gas-report.txt` averages:
+
+| Function | Min | Avg | Max |
+|----------|-----|-----|-----|
+| buyTicket                | 194,757 | **234,314** | 267,957 |
+| revealRndNumber          | 66,959  | **72,770**  | 106,007 |
+| depositTL                | 57,147  | **58,082**  | 83,859 |
+| withdrawTL               | -        | **61,317**  | -       |
+| collectTicketPrize       | 73,974  | **95,859**  | 119,622 |
+| transferRevealedTicketTo | -        | **114,120** | -       |
+
+View functions (`getLastBoughtTicketNo`, `getIthOwnedTicketNo`, `getWinningTickets`,
+`getPrizeCollectionInfo`, `getIthWinningTicket`, `getLotteryNo`,
+`getTotalLotteryMoneyCollected`, `getLotteryDuration`) consume **no on-chain gas**
+when called via `eth_call`.
 
 ## Technologies Used
 
 - Solidity 0.8.26
-- Hardhat 2.22+
-- OpenZeppelin Contracts 5.0
+- Hardhat 2.28.6 (latest stable Hardhat 2; the spec asks for Hardhat 3 — see `docs/report.tex` "Tooling Note" for the rationale)
+- OpenZeppelin Contracts 5.x
 - ethers.js 6.x
 - TypeScript
 - Chai (testing)

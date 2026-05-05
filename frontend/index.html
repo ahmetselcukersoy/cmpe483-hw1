@@ -292,8 +292,8 @@
                     <h2>Buy Lottery Ticket</h2>
                     <p style="color: #888; margin-bottom: 15px;">Price: 50 TL per ticket</p>
                     <div class="form-group">
-                        <label>Random Number (will be hashed)</label>
-                        <input type="number" id="randomNumber" placeholder="Enter a random number">
+                        <label>Random Number (uint256, will be hashed with your address)</label>
+                        <input type="text" inputmode="numeric" pattern="[0-9]*" id="randomNumber" placeholder="Enter a non-negative integer">
                     </div>
                     <button onclick="buyTicket()">Buy Ticket</button>
                     <div id="lastPurchase" style="margin-top: 15px; color: #2ecc71;"></div>
@@ -304,11 +304,11 @@
                     <h2>Reveal Random Number</h2>
                     <div class="form-group">
                         <label>Ticket Number</label>
-                        <input type="number" id="revealTicketNo" placeholder="Ticket #">
+                        <input type="text" inputmode="numeric" pattern="[0-9]*" id="revealTicketNo" placeholder="Ticket #">
                     </div>
                     <div class="form-group">
                         <label>Your Random Number</label>
-                        <input type="number" id="revealRandom" placeholder="The number you committed">
+                        <input type="text" inputmode="numeric" pattern="[0-9]*" id="revealRandom" placeholder="The number you committed">
                     </div>
                     <button onclick="revealRandom()" class="btn-success">Reveal</button>
                 </div>
@@ -610,15 +610,29 @@
         }
 
         async function buyTicket() {
-            const rndNumber = document.getElementById('randomNumber').value;
-            if (!rndNumber) {
+            const raw = document.getElementById('randomNumber').value.trim();
+            if (!raw) {
                 log('Please enter a random number', 'error');
                 return;
             }
 
+            let rndNumber;
             try {
-                // Hash the random number
-                const hash = ethers.keccak256(ethers.AbiCoder.defaultAbiCoder().encode(['uint256'], [rndNumber]));
+                // Parse as BigInt so values above 2^53 work; uint256 supports up to 2^256-1.
+                rndNumber = BigInt(raw);
+                if (rndNumber < 0n) throw new Error('must be non-negative');
+            } catch (e) {
+                log('Random number must be a non-negative integer', 'error');
+                return;
+            }
+
+            try {
+                // Salted commitment: keccak256(abi.encodePacked(rnd_number, msg.sender))
+                // must match what the contract verifies in revealRndNumber.
+                const hash = ethers.solidityPackedKeccak256(
+                    ['uint256', 'address'],
+                    [rndNumber, account]
+                );
 
                 log('Buying ticket with hash: ' + hash.slice(0, 10) + '...', 'info');
                 const tx = await lottery.buyTicket(hash);
@@ -635,9 +649,9 @@
                 if (event) {
                     const parsed = lottery.interface.parseLog(event);
                     const ticketNo = parsed.args[2];
-                    log('Ticket #' + ticketNo + ' purchased! Remember your random number: ' + rndNumber, 'success');
+                    log('Ticket #' + ticketNo + ' purchased! Remember your random number: ' + rndNumber.toString(), 'success');
                     document.getElementById('lastPurchase').textContent =
-                        'Last ticket: #' + ticketNo + ' | Random: ' + rndNumber;
+                        'Last ticket: #' + ticketNo + ' | Random: ' + rndNumber.toString();
                 } else {
                     log('Ticket purchased successfully!', 'success');
                 }
@@ -649,11 +663,20 @@
         }
 
         async function revealRandom() {
-            const ticketNo = document.getElementById('revealTicketNo').value;
-            const rndNumber = document.getElementById('revealRandom').value;
+            const ticketRaw = document.getElementById('revealTicketNo').value.trim();
+            const rndRaw = document.getElementById('revealRandom').value.trim();
 
-            if (!ticketNo || !rndNumber) {
+            if (!ticketRaw || !rndRaw) {
                 log('Please enter ticket number and random number', 'error');
+                return;
+            }
+
+            let ticketNo, rndNumber;
+            try {
+                ticketNo = BigInt(ticketRaw);
+                rndNumber = BigInt(rndRaw);
+            } catch (e) {
+                log('Ticket / random number must be integers', 'error');
                 return;
             }
 

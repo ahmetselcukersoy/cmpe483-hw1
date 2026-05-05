@@ -60,4 +60,24 @@ contract LotteryTicket is ERC721, Ownable {
     function transferTicket(address from, address to, uint256 tokenId) external onlyLottery {
         _transfer(from, to, tokenId);
     }
+
+    /**
+     * @dev Restrict transfers so that only the Lottery contract can move tickets.
+     *      Mints (from == address(0)) and burns (to == address(0)) are still allowed,
+     *      but plain ERC721 transfers/approvals from EOAs are blocked. This prevents
+     *      bypassing transferRevealedTicketTo (which enforces "must be revealed" and
+     *      keeps userTickets bookkeeping in sync).
+     */
+    function _update(address to, uint256 tokenId, address auth)
+        internal
+        override
+        returns (address)
+    {
+        address from = _ownerOf(tokenId);
+        // Block any non-mint, non-burn transfer that wasn't initiated by the Lottery.
+        if (from != address(0) && to != address(0) && msg.sender != lotteryContract) {
+            revert OnlyLottery();
+        }
+        return super._update(to, tokenId, auth);
+    }
 }
